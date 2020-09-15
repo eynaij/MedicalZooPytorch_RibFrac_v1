@@ -1,5 +1,8 @@
 import argparse
 import os
+import sys
+root_dir = os.path.abspath(__file__).split('test')[0]
+sys.path.insert(0, root_dir )
 
 import torch
 import torch.nn.functional as F
@@ -14,15 +17,15 @@ from lib.losses3D import DiceLoss
 
 def main():
     args = get_arguments()
-    #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
     ## FOR REPRODUCIBILITY OF RESULTS
     seed = 1777777
     utils.reproducibility(args, seed)
 
 
-
     training_generator, val_generator, full_volume, affine = medical_loaders.generate_datasets(args,
                                                                                                path='./datasets')
+    # import ipdb;ipdb.set_trace()
     model, optimizer = medzoo.create_model(args)
     #
     criterion = DiceLoss(classes=args.classes)
@@ -43,16 +46,16 @@ def main():
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--batchSz', type=int, default=1)
-    parser.add_argument('--dataset_name', type=str, default="iseg2017")
+    parser.add_argument('--dataset_name', type=str, default="ribfrac")
     parser.add_argument('--dim', nargs="+", type=int, default=(64, 64, 64))
     parser.add_argument('--nEpochs', type=int, default=250)
 
-    parser.add_argument('--classes', type=int, default=4)
+    parser.add_argument('--classes', type=int, default=6)
     parser.add_argument('--samples_train', type=int, default=1)
     parser.add_argument('--samples_val', type=int, default=1)
     parser.add_argument('--split', type=float, default=0.8)
-    parser.add_argument('--inChannels', type=int, default=2)
-    parser.add_argument('--inModalities', type=int, default=2)
+    parser.add_argument('--inChannels', type=int, default=1)
+    parser.add_argument('--inModalities', type=int, default=1)
     parser.add_argument('--fold_id', default='1', type=str, help='Select subject for fold validation')
     parser.add_argument('--lr', default=1e-2, type=float,
                         help='learning rate (default: 1e-3)')
@@ -64,13 +67,14 @@ def get_arguments():
     parser.add_argument('--opt', type=str, default='sgd',
                         choices=('sgd', 'adam', 'rmsprop'))
     parser.add_argument('--pretrained',
-                        default='../saved_models/UNET3D_checkpoints/UNET3D_25_05___15_15_iseg2017_/UNET3D_25_05___15_15_iseg2017__last_epoch.pth',
+                        default='/data/hejy/MedicalZooPytorch/saved_models/UNET3D_checkpoints/UNET3D_18_08___04_12_ribfrac_/UNET3D_18_08___04_12_ribfrac__last_epoch.pth',
                         type=str, metavar='PATH',
                         help='path to pretrained model')
+    parser.add_argument('--loadData', default=False)
 
     args = parser.parse_args()
 
-    args.save = '../inference_checkpoints/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
+    args.save = '/data/hejy/MedicalZooPytorch/inference_checkpoints/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
         utils.datestr(), args.dataset_name)
     args.tb_log_dir = '../runs/'
     return args

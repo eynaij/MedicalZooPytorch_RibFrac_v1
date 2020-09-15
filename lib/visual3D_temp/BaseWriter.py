@@ -13,7 +13,9 @@ dict_class_names = {"iseg2017": ["Air", "CSF", "GM", "WM"],
                     "brats2019": ["Background", "NCR", "ED", "NET", "ET"],
                     "brats2020": ["Background", "NCR/NET", "ED", "ET"],
                     "covid_seg": ["c1", "c2", "c3"],
-                    "miccai2019": ["c1", "c2", "c3", "c4", "c5", "c6", "c7"]
+                    "miccai2019": ["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
+                    # "ribfrac": ["Background", "displaced", "non-displaced", "buckle", "segmental", "uncertain"],
+                    "ribfrac": ["Background", "fraction"],
                     }
 
 
@@ -28,6 +30,7 @@ class TensorboardWriter():
         self.csv_train, self.csv_val = self.create_stats_files(args.save)
         self.dataset_name = args.dataset_name
         self.classes = args.classes
+        # import ipdb;ipdb.set_trace()
         self.label_names = dict_class_names[args.dataset_name]
 
         self.data = self.create_data_structure()
@@ -65,7 +68,7 @@ class TensorboardWriter():
 
             print(info_print)
         else:
-
+            # import ipdb;ipdb.set_trace()
             info_print = "\nEpoch: {:.2f} Loss:{:.4f} \t DSC:{:.4f}".format(iter, self.data[mode]['loss'] /
                                                                             self.data[mode]['count'],
                                                                             self.data[mode]['dsc'] /
@@ -97,7 +100,7 @@ class TensorboardWriter():
         :param writer_step: tensorboard writer step
         """
         # WARNING ASSUMING THAT CHANNELS IN SAME ORDER AS DICTIONARY
-
+        # import ipdb;ipdb.set_trace()
         dice_coeff = np.mean(channel_score) * 100
 
         num_channels = len(channel_score)

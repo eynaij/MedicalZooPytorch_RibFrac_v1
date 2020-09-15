@@ -54,12 +54,27 @@ class BaseModel(nn.Module, ABC):
         except RuntimeError:
             ckpt_dict = torch.load(ckpt_file, map_location=lambda storage, loc: storage)
         # Restore model weights
-        self.load_state_dict(ckpt_dict['model_state_dict'])
+        # self.load_state_dict(ckpt_dict['model_state_dict'])
+        # import ipdb;ipdb.set_trace()
+        ckpt_dict['new_state_dict'] = {}
+        for key in ckpt_dict['state_dict']:
+            new_key = key.lstrip('module.')
+            if new_key == "relu_conv_c1.1.weight":
+                new_key = 'l'+new_key
+            if new_key == "s2_1x1_conv3d.weight" or new_key == "s3_1x1_conv3d.weight":
+                new_key = 'd'+new_key
+            ckpt_dict['new_state_dict'][new_key] = ckpt_dict['state_dict'][key]
+
+        # self.load_state_dict(ckpt_dict['state_dict'])
+        self.load_state_dict(ckpt_dict['new_state_dict'])
+
 
         # Restore optimizer status if existing. Evaluation doesn't need this
         # TODO return optimizer?????
         if optimizer:
-            optimizer.load_state_dict(ckpt_dict['optimizer_state_dict'])
+            # optimizer.load_state_dict(ckpt_dict['optimizer_state_dict'])
+            optimizer.load_state_dict(ckpt_dict['optimizer'])
+
 
         # Return global step
         return ckpt_dict['epoch']

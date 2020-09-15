@@ -11,12 +11,13 @@ from .iseg2019 import MRIDatasetISEG2019
 from .ixi_t1_t2 import IXIMRIdataset
 from .miccai_2019_pathology import MICCAI2019_gleason_pathology
 from .mrbrains2018 import MRIDatasetMRBRAINS2018
-
+from .miccai_2020_ribfrac import MICCAI2020_RIBFRAC, MICCAI2020_RIBFRAC_VAL, MICCAI2020_RIBFRAC_INFERENCE
+import copy, torch
 
 def generate_datasets(args, path='.././datasets'):
     params = {'batch_size': args.batchSz,
-              'shuffle': True,
-              'num_workers': 2}
+              'shuffle': False,#True,
+              'num_workers': 36}
     samples_train = args.samples_train
     samples_val = args.samples_val
     split_percent = args.split
@@ -38,6 +39,13 @@ def generate_datasets(args, path='.././datasets'):
 
         val_loader = MRIDatasetISEG2019(args, 'val', dataset_path=path, crop_dim=args.dim, split_id=split_idx,
                                         samples=samples_val, load=args.loadData)
+    
+    elif args.dataset_name == "ribfrac":
+        train_loader = MICCAI2020_RIBFRAC(args, 'train', dataset_path=path, classes=args.classes, dim=args.dim,
+                                              split_id=0, samples=samples_train, load=args.loadData)
+        val_loader = MICCAI2020_RIBFRAC_VAL(args, 'val', dataset_path=path, classes=args.classes, dim=args.dim,
+                                            split_id=0, samples=samples_val, load=args.loadData)
+
     elif args.dataset_name == "mrbrains4":
         train_loader = MRIDatasetMRBRAINS2018(args, 'train', dataset_path=path, classes=args.classes, dim=args.dim,
                                               split_id=0, samples=samples_train, load=args.loadData)
@@ -123,17 +131,36 @@ def generate_datasets(args, path='.././datasets'):
 
         val_loader = COVID_Seg_Dataset(mode='val', dataset_path=path, crop_dim=args.dim,
                                        fold=0, samples=samples_val)
-    training_generator = DataLoader(train_loader, **params)
-    val_generator = DataLoader(val_loader, **params)
+    if args.distributed:
+        sampler_train = torch.utils.data.distributed.DistributedSampler(train_loader)
+        params_train = copy.deepcopy(params)
+        params_train['sampler'] = sampler_train   
+        sampler_val = torch.utils.data.distributed.DistributedSampler(val_loader)
+        params_val = copy.deepcopy(params)
+        params_val['sampler'] =sampler_val
+        # print(params,'\n',params_train,'\n', params_val)
+        # import ipdb;ipdb.set_trace()
+        training_generator = DataLoader(train_loader, **params_train)
+        val_generator = DataLoader(val_loader, **params_val)  
+    else:    
+        training_generator = DataLoader(train_loader, **params)
+        val_generator = DataLoader(val_loader, **params)
 
     print("DATA SAMPLES HAVE BEEN GENERATED SUCCESSFULLY")
-    return training_generator, val_generator, val_loader.full_volume, val_loader.affine
+    # return training_generator, val_generator, val_loader.full_volume, val_loader.affine
+    return training_generator, val_generator, val_loader.full_volume, val_loader.affine,train_loader
+
+
+
+
+
+
 
 
 def select_full_volume_for_infer(args, path='.././datasets'):
     params = {'batch_size': args.batchSz,
-              'shuffle': True,
-              'num_workers': 2}
+              'shuffle': False, #True,
+              'num_workers': 36}
     samples_train = args.samples_train
     samples_val = args.samples_val
     split_percent = args.split
@@ -153,6 +180,13 @@ def select_full_volume_for_infer(args, path='.././datasets'):
 
         val_loader = MRIDatasetISEG2019('val', dataset_path=path, crop_dim=args.dim, split_id=split_idx,
                                         samples=samples_val)
+
+    elif args.dataset_name == "ribfrac":
+        train_loader = MICCAI2020_RIBFRAC(args, 'train', dataset_path=path, classes=args.classes, dim=args.dim,
+                                              split_id=0, samples=samples_train, load=args.loadData)
+        val_loader = MICCAI2020_RIBFRAC(args, 'val', dataset_path=path, classes=args.classes, dim=args.dim,
+                                            split_id=0, samples=samples_val, load=args.loadData)
+
     elif args.dataset_name == "mrbrains4":
         train_loader = MRIDatasetMRBRAINS2018('train', dataset_path=path, classes=args.classes, dim=args.dim,
                                               split_id=0, samples=samples_train)

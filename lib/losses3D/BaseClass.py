@@ -42,6 +42,7 @@ class _AbstractDiceLoss(nn.Module):
         """
         Expand to one hot added extra for consistency reasons
         """
+        # import ipdb;ipdb.set_trace()
         target = expand_as_one_hot(target.long(), self.classes)
 
         assert input.dim() == target.dim() == 5, "'input' and 'target' have different number of dims"
@@ -49,7 +50,7 @@ class _AbstractDiceLoss(nn.Module):
         if self.skip_index_after is not None:
             before_size = target.size()
             target = self.skip_target_channels(target, self.skip_index_after)
-            print("Target {} after skip index {}".format(before_size, target.size()))
+            # print("Target {} after skip index {}".format(before_size, target.size()))
 
         assert input.size() == target.size(), "'input' and 'target' must have the same shape"
         # get probabilities from logits

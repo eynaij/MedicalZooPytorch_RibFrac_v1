@@ -11,7 +11,7 @@ from lib.train.trainer import Trainer
 import torch
 def main():
     args = get_arguments()
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
     ## FOR REPRODUCIBILITY OF RESULTS
     seed = 1777777
     utils.reproducibility(args, seed)
@@ -62,7 +62,7 @@ def get_arguments():
                         default='../runs/')
     args = parser.parse_args()
 
-    args.save = '../saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
+    args.save = '/data/hejy/MedicalZooPytorch/saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
         utils.datestr(), args.dataset_name)
     args.tb_log_dir = '../runs/'
     return args

@@ -32,7 +32,7 @@ def get_arguments():
 
     args = parser.parse_args()
 
-    args.save = '../saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
+    args.save = '/data/hejy/MedicalZooPytorch/saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
         datestr(), args.dataset_name)
     return args
 

@@ -6,6 +6,9 @@ import torch.nn.functional as F
 
 from .viz_2d import *
 
+from skimage import morphology, measure
+from sklearn.cluster import DBSCAN
+from collections import Counter
 
 def test_padding():
     x = torch.randn(1, 144, 192, 256)
@@ -39,12 +42,22 @@ def roundup(x, base=32):
 
 
 def non_overlap_padding(args, full_volume, model,criterion, kernel_dim=(32, 32, 32)):
-
+    import ipdb;ipdb.set_trace()
     x = full_volume[:-1,...].detach()
-    target = full_volume[-1,...].unsqueeze(0).detach()
+    # target = full_volume[-1,...].unsqueeze(0).detach()
+    target = full_volume[-1,...].detach()
+    # import ipdb;ipdb.set_trace()
+    h,w,d = target.shape
+    target_new = torch.zeros(6,h,w,d)
+    target_new[0][target==0] = 1
+    target_new[1][target==1] = 1
+    target_new[2][target==2] = 1
+    target_new[3][target==3] = 1
+    target_new[4][target==4] = 1
+    target_new[5][target==5] = 1
+    target = target_new
     #print(target.max())
     #print('full volume {} = input {} + target{}'.format(full_volume.shape, x.shape,target.shape))
-
     modalities, D, H, W = x.shape
     kc, kh, kw = kernel_dim
     dc, dh, dw = kernel_dim  # stride
@@ -87,13 +100,70 @@ def non_overlap_padding(args, full_volume, model,criterion, kernel_dim=(32, 32, 
     output = output.permute(0, 1, 4, 2, 5, 3, 6).contiguous()
     output = output.view(-1, output_c, output_h, output_w)
 
-
     y = output[:, a[4]:output_c - a[5], a[2]:output_h - a[3], a[0]:output_w - a[1]]
+    
+    y = torch.nn.Softmax(dim=0)(y)
+    y[y<0.5] = 0
+    # y[y>0.5] = 1
+    index_ = np.where(y!=0)
+    
+    confidence_list = y[index_]
+    
+    y_new = torch.zeros(h,w,d)
+    y[index_] = torch.from_numpy(index_[0]).float()
 
-    print(target.dtype,torch.randn(1,4,156,240,240).dtype)
+    pred = torch.zeros(h,w,d)
+    pred[(index_[1], index_[2], index_[3])] = torch.from_numpy(index_[0]).float()
+    # thresh = 0.5
+    # y[]
+    
+    # import ipdb;ipdb.set_trace()
 
+    pred = morphology.erosion(pred)
+    for i in range(1, 6):
+        index_i= np.where(pred==i)
+        if index_i[0].size == 0:
+            continue
+        fea_1 = np.vstack((index_i[0], index_i[1], index_i[2])).T
+        label_pred = DBSCAN(eps=5).fit_predict(fea_1)
+        label_counter = Counter(label_pred)
+        labelId_toRm = []
+        labelId_left = []
+        num_thresh = 1000
+        for label_id, num in label_counter.items():
+            if num < num_thresh:
+                labelId_toRm.append(label_id)
+            else:
+                labelId_left.append(label_id)
+        if -1 not in labelId_toRm:
+            labelId_toRm.append(-1) 
+        index_toRm_list = []
+        for label_id in labelId_toRm:
+            index_toRm_list.extend(np.where(label_pred == label_id)[0].tolist())
+        try:
+            xyz_toRm =  fea_1[np.array(index_toRm_list)].T
+        except:
+            import ipdb;ipdb.set_trace()
+        xyz_toRm_org = (xyz_toRm[0], xyz_toRm[1], xyz_toRm[2])
+        pred[xyz_toRm_org] = 0
 
-    loss_dice, per_ch_score = criterion(y.unsqueeze(0).cuda(),target.cuda())
+    pred = morphology.dilation(morphology.erosion(pred))
+    import ipdb;ipdb.set_trace()
+
+    labels = measure.label(pred, connectivity=3)
+    label_code_list = []
+    for region in measure.regionprops(labels):
+        label_code = int(pred[tuple(region.coords[0].tolist())])
+        label_code_list.append(label_code)
+    pred_cls_num = len(label_code_list)
+
+    
+    # print(target.dtype,torch.randn(1,4,156,240,240).dtype)
+
+    
+    loss_dice, per_ch_score = criterion(y.unsqueeze(0).cuda(),target.unsqueeze(0).cuda())
+    # loss_dice, per_ch_score = criterion(y.cuda(),target.cuda())
+
     print("INFERENCE DICE LOSS {} ".format(loss_dice.item()))
     return loss_dice
 

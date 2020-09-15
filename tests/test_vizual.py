@@ -10,7 +10,7 @@ import lib.utils as utils
 from lib.losses3D import DiceLoss
 from lib.visual3D_temp import *
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
 seed = 1777777
 
 
@@ -63,7 +63,7 @@ def get_arguments():
 
     args = parser.parse_args()
 
-    args.save = '../saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
+    args.save = '/data/hejy/MedicalZooPytorch/saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
         utils.datestr(), args.dataset_name)
     return args
 

@@ -9,6 +9,42 @@ from scipy import ndimage
 concentrate all pre-processing here here
 """
 
+def load_medical_image_4test(path, type=None, resample=None,
+                       viz3d=False, to_canonical=False, rescale=None, normalization='full_volume_mean',
+                       clip_intenisty=True, crop_size=(0, 0, 0), crop=(0, 0, 0), ):
+    img_nii = nib.load(path)
+    img_affine = img_nii.affine
+    img_hdr = img_nii.header
+    if to_canonical:
+        img_nii = nib.as_closest_canonical(img_nii)
+
+    if resample is not None:
+        img_nii = resample_to_output(img_nii, voxel_sizes=resample)
+
+    img_np = np.squeeze(img_nii.get_fdata(dtype=np.float32))
+    
+    if viz3d:
+        return torch.from_numpy(img_np), img_affine, img_hdr
+
+    # 1. Intensity outlier clipping
+    if clip_intenisty and type != "label":
+        img_np = percentile_clip(img_np)
+
+    # 2. Rescale to specified output shape
+    if rescale is not None:
+        rescale_data_volume(img_np, rescale)
+
+    # 3. intensity normalization
+    img_tensor = torch.from_numpy(img_np)
+
+    MEAN, STD, MAX, MIN = 0., 1., 1., 0.
+    if type != 'label':
+        MEAN, STD = img_tensor.mean(), img_tensor.std()
+        MAX, MIN = img_tensor.max(), img_tensor.min()
+    if type != "label":
+        img_tensor = normalize_intensity(img_tensor, normalization=normalization, norm_values=(MEAN, STD, MAX, MIN))
+    img_tensor = crop_img(img_tensor, crop_size, crop)
+    return img_tensor
 
 def load_medical_image(path, type=None, resample=None,
                        viz3d=False, to_canonical=False, rescale=None, normalization='full_volume_mean',
@@ -68,6 +104,11 @@ def crop_img(img_tensor, crop_size, crop):
         return img_tensor
     slices_crop, w_crop, h_crop = crop
     dim1, dim2, dim3 = crop_size
+    # import ipdb;ipdb.set_trace()
+    if h_crop == -1:
+        h_crop = 0
+        dim3 = img_tensor.shape[2]
+
     inp_img_dim = img_tensor.dim()
     assert inp_img_dim >= 3
     if img_tensor.dim() == 3:

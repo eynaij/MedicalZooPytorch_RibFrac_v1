@@ -247,7 +247,7 @@ class DualSingleDenseNet(BaseModel):
         super(DualSingleDenseNet, self).__init__()
         self.input_channels = in_channels
         self.num_classes = classes
-
+        # import ipdb;ipdb.set_trace()
         if self.input_channels == 2:
             self.early_conv_1 = _HyperDenseLayer(num_input_features=1, num_output_channels=25, drop_rate=drop_rate)
             self.early_conv_2 = _HyperDenseLayer(num_input_features=1, num_output_channels=25, drop_rate=drop_rate)

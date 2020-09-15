@@ -11,13 +11,28 @@ import lib.train as train
 import lib.utils as utils
 from lib.losses3D.dice import DiceLoss
 
+from apex.parallel import DistributedDataParallel as DDP
+from apex.fp16_utils import *
+from apex import amp, optimizers
+from apex.multi_tensor_apply import multi_tensor_applier
+import torch.distributed as dist
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 seed = 1777777
 torch.manual_seed(seed)
 
 
+
+
 def main():
     args = get_arguments()
+    
+    if args.distributed:
+        torch.distributed.init_process_group(backend='nccl', init_method='env://')
+        args.world_size = torch.distributed.get_world_size()
+    assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."  #1
+
+    torch.backends.cudnn.benchmark = True
 
     utils.reproducibility(args, seed)
     utils.make_dirs(args.save)
@@ -26,11 +41,16 @@ def main():
                                                                                                path='.././datasets')
     model, optimizer = medzoo.create_model(args)
     criterion = DiceLoss(classes=11, skip_index_after=args.classes)
+    if args.sync_bn:
+        model = apex.parallel.convert_syncbn_model(model)
 
     if args.cuda:
         model = model.cuda()
         print("Model transferred in GPU.....")
 
+    if args.distributed:
+        model = DDP(model, delay_allreduce=True)
+        
     trainer = train.Trainer(args, model, criterion, optimizer, train_data_loader=training_generator,
                             valid_data_loader=val_generator, lr_scheduler=None)
     print("START TRAINING...")
@@ -69,10 +89,14 @@ def get_arguments():
                         choices=('sgd', 'adam', 'rmsprop'))
     parser.add_argument('--log_dir', type=str,
                         default='../runs/')
-
+    parser.add_argument('--distributed', action='store_true', default=True, 
+                        help='whether use distributed parallel training')
+    parser.add_argument('--sync_bn', action='store_true', default=True,
+                        help='enabling apex sync BN')
+    
     args = parser.parse_args()
 
-    args.save = '../saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
+    args.save = '/data/hejy/MedicalZooPytorch/saved_models/' + args.model + '_checkpoints/' + args.model + '_{}_{}_'.format(
         utils.datestr(), args.dataset_name)
     return args
 

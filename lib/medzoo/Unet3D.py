@@ -3,7 +3,107 @@ import torch
 from torchsummary import summary
 import torchsummaryX
 from lib.medzoo.BaseModelClass import BaseModel
+import torch.nn.functional as F
 
+class BaseAttentionBlock(nn.Module):
+    """The basic implementation for self-attention block/non-local block."""
+
+    def __init__(self, in_channels, out_channels, key_channels, value_channels,
+                 scale=1, norm_layer=nn.BatchNorm3d, **kwargs):
+        super(BaseAttentionBlock, self).__init__()
+        self.scale = scale
+        self.key_channels = key_channels
+        self.value_channels = value_channels
+        if scale > 1:
+            self.pool = nn.MaxPool3d(scale)
+
+        self.f_value = nn.Conv3d(in_channels, value_channels, 1)
+        self.f_key = nn.Sequential(
+            nn.Conv3d(in_channels, key_channels, 1),
+            norm_layer(key_channels),
+            nn.ReLU(True)
+        )
+        self.f_query = self.f_key
+        self.W = nn.Conv3d(value_channels, out_channels, 1)
+        nn.init.constant_(self.W.weight, 0)
+        nn.init.constant_(self.W.bias, 0)
+
+    def forward(self, x):
+        # batch_size, c, w, h = x.size()
+        batch_size, c, w, h, d = x.size()
+
+        if self.scale > 1:
+            x = self.pool(x)
+
+        value = self.f_value(x).view(batch_size, self.value_channels, -1).permute(0, 2, 1)
+        query = self.f_query(x).view(batch_size, self.key_channels, -1).permute(0, 2, 1)
+        key = self.f_key(x).view(batch_size, self.key_channels, -1)
+
+        sim_map = torch.bmm(query, key) * (self.key_channels ** -.5)
+        sim_map = F.softmax(sim_map, dim=-1)
+
+        context = torch.bmm(sim_map, value).permute(0, 2, 1).contiguous()
+        context = context.view(batch_size, self.value_channels, *x.size()[2:])
+        context = self.W(context)
+        if self.scale > 1:
+            context = F.interpolate(context, size=(w, h), mode='bilinear', align_corners=True)
+
+        return context
+
+class BaseOCModule(nn.Module):
+    """Base-OC"""
+
+    def __init__(self, in_channels, out_channels, key_channels, value_channels,
+                 scales=([1]), norm_layer=nn.BatchNorm3d, concat=True, **kwargs):
+        super(BaseOCModule, self).__init__()
+        self.stages = nn.ModuleList([
+            BaseAttentionBlock(in_channels, out_channels, key_channels, value_channels, scale, norm_layer, **kwargs)
+            for scale in scales])
+        in_channels = in_channels * 2 if concat else in_channels
+        self.project = nn.Sequential(
+            nn.Conv3d(in_channels, out_channels, 1),
+            norm_layer(out_channels),
+            nn.ReLU(True),
+            nn.Dropout3d(0.05)
+        )
+        self.concat = concat
+
+    def forward(self, x):
+        
+        priors = [stage(x) for stage in self.stages]
+        context = priors[0]
+        for i in range(1, len(priors)):
+            context += priors[i]
+        if self.concat:
+            context = torch.cat([context, x], 1)
+        out = self.project(context)
+        return out
+
+class OCHead(nn.Module):
+    def __init__(self, in_ch, nclass, oc_arch = 'base', norm_layer=nn.BatchNorm3d, **kwargs):
+        super(OCHead, self).__init__()
+        if oc_arch == 'base':
+            self.context = nn.Sequential(
+                nn.Conv3d(in_ch, 512, 3, 1, padding=1, bias=False),
+                norm_layer(512),
+                nn.ReLU(True),
+                BaseOCModule(512, 512, 256, 256, scales=([1]), norm_layer=norm_layer, **kwargs))
+        elif oc_arch == 'pyramid':
+            self.context = nn.Sequential(
+                nn.Conv3d(in_ch, 512, 3, 1, padding=1, bias=False),
+                norm_layer(512),
+                nn.ReLU(True),
+                PyramidOCModule(512, 512, 256, 512, scales=([1, 2, 3, 6]), norm_layer=norm_layer, **kwargs))
+        elif oc_arch == 'asp':
+            self.context = ASPOCModule(in_ch, 512, 256, 512, norm_layer=norm_layer, **kwargs)
+        else:
+            raise ValueError("Unknown OC architecture!")
+
+        self.out = nn.Conv3d(512, nclass, 1)
+
+    def forward(self, x):
+        x = self.context(x)
+        return self.out(x)
 
 class UNet3D(BaseModel):
     """
@@ -15,7 +115,7 @@ class UNet3D(BaseModel):
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.base_n_filter = base_n_filter
-
+        # self.head = OCHead(in_ch=self.base_n_filter*16, nclass=self.base_n_filter * 16)
         self.lrelu = nn.LeakyReLU()
         self.dropout3d = nn.Dropout3d(p=0.6)
         self.upsacle = nn.Upsample(scale_factor=2, mode='nearest')
@@ -44,6 +144,7 @@ class UNet3D(BaseModel):
         self.inorm3d_c4 = nn.InstanceNorm3d(self.base_n_filter * 8)
 
         self.conv3d_c5 = nn.Conv3d(self.base_n_filter * 8, self.base_n_filter * 16, kernel_size=3, stride=2, padding=1,
+        # self.conv3d_c5 = nn.Conv3d(self.base_n_filter * 8, self.base_n_filter * 16, kernel_size=3, stride=2, padding=2,dilation=2,
                                    bias=False)
         self.norm_lrelu_conv_c5 = self.norm_lrelu_conv(self.base_n_filter * 16, self.base_n_filter * 16)
         self.norm_lrelu_upscale_conv_norm_lrelu_l0 = self.norm_lrelu_upscale_conv_norm_lrelu(self.base_n_filter * 16,
@@ -162,6 +263,9 @@ class UNet3D(BaseModel):
         out = self.dropout3d(out)
         out = self.norm_lrelu_conv_c5(out)
         out += residual_5
+        # import ipdb;ipdb.set_trace()
+        # out = self.head(out)
+        # import ipdb;ipdb.set_trace()
         out = self.norm_lrelu_upscale_conv_norm_lrelu_l0(out)
 
         out = self.conv3d_l0(out)

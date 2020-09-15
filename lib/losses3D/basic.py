@@ -49,6 +49,7 @@ def compute_per_channel_dice(input, target, epsilon=1e-6, weight=None):
     """
 
     # input and target shapes must match
+    # import ipdb;ipdb.set_trace()
     assert input.size() == target.size(), "'input' and 'target' must have the same shape"
 
     input = flatten(input)
@@ -62,7 +63,20 @@ def compute_per_channel_dice(input, target, epsilon=1e-6, weight=None):
 
     # here we can use standard dice (input + target).sum(-1) or extension (see V-Net) (input^2 + target^2).sum(-1)
     denominator = (input * input).sum(-1) + (target * target).sum(-1)
-    return 2 * (intersect / denominator.clamp(min=epsilon))
+    # dice_6 = 2 * ((intersect + 1) / (denominator.clamp(min=epsilon)+1))
+
+    # if dice_6[2]>1 or dice_6[4]>1:
+    #     print('input:', input)
+    #     print('target:', target)
+    #     print('intersect:',intersect)
+    #     print('input*2:',(input * input).sum(-1))
+    #     print('target*2:',(target * target).sum(-1))
+    #     print('denominator:',denominator)
+    #     print('dice_6:', dice_6)
+    #     import ipdb;ipdb.set_trace()
+    # return dice_6
+    return 2 * (intersect  / denominator.clamp(min=epsilon))
+    # return 2 * ((intersect + 1) / (denominator.clamp(min=epsilon)+1))
 
 
 def flatten(tensor):
